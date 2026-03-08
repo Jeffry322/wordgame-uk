@@ -1,0 +1,192 @@
+@page "/solo"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject Dictionary GameDictionary
+
+<PageTitle>Dictionary Game</PageTitle>
+
+<h1>Dictionary Game</h1>
+
+@if (!gameStarted)
+{
+    <div class="mb-3">
+        <label for="difficulty-input" class="form-label">Difficulty</label>
+        <select id="difficulty-input" class="form-select" @bind="selectedDifficulty">
+            <option value="@SyllableDifficulty.AtLeast500">500+ words</option>
+            <option value="@SyllableDifficulty.AtMost500">No more than 500 words</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label for="time-input" class="form-label">Round Time: @roundDurationSeconds s</label>
+        <input id="time-input"
+               class="form-range"
+               type="range"
+               min="@MinRoundDurationSeconds"
+               max="@MaxRoundDurationSeconds"
+               @bind="roundDurationSeconds" />
+    </div>
+
+    <div class="mb-3">
+        <label for="lives-input" class="form-label">Lives (max timeouts): @lives</label>
+        <input id="lives-input"
+               class="form-range"
+               type="range"
+               min="@MinLives"
+               max="@MaxLives"
+               @bind="lives" />
+    </div>
+
+    <button class="btn btn-primary" @onclick="StartGame">Start Game</button>
+}
+else
+{
+    <p class="lead">Type a valid dictionary word that contains this syllable:</p>
+    <p class="fs-3 fw-bold" role="status">@currentSyllable</p>
+    <p>Time left: <strong>@secondsLeft</strong>s</p>
+
+    <form @onsubmit="SubmitWord" @onsubmit:preventDefault>
+        <div class="mb-3">
+            <label for="word-input" class="form-label">Your word</label>
+            <input id="word-input" class="form-control" @bind="userWord" />
+        </div>
+
+        <button class="btn btn-primary" type="submit">Submit</button>
+        <button class="btn btn-outline-secondary ms-2" type="button" @onclick="StartGame">Restart Game</button>
+    </form>
+
+    <p>Rounds: @rounds | Correct: @correctAnswers | Wrong: @wrongGuesses | Timeouts: @timedOutRounds/@lives</p>
+}
+
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <p role="status">@statusMessage</p>
+}
+
+@code {
+    private const int MinRoundDurationSeconds = 5;
+    private const int MaxRoundDurationSeconds = 10;
+    private const int MinLives = 1;
+    private const int MaxLives = 10;
+    private readonly Random random = new();
+    private Timer? roundTimer;
+    private bool gameStarted;
+    private string currentSyllable = string.Empty;
+    private string userWord = string.Empty;
+    private string statusMessage = string.Empty;
+    private int secondsLeft = 10;
+    private int roundDurationSeconds = 10;
+    private int lives = 3;
+    private int rounds;
+    private int correctAnswers;
+    private int wrongGuesses;
+    private int timedOutRounds;
+    private SyllableDifficulty selectedDifficulty = SyllableDifficulty.AtLeast500;
+
+    private void StartGame()
+    {
+        gameStarted = true;
+        rounds = 0;
+        correctAnswers = 0;
+        wrongGuesses = 0;
+        timedOutRounds = 0;
+        userWord = string.Empty;
+        statusMessage = string.Empty;
+        secondsLeft = roundDurationSeconds;
+        StartNextRound();
+    }
+
+    private void SubmitWord()
+    {
+        if (!gameStarted)
+            return;
+
+        var submittedWord = userWord;
+        userWord = string.Empty;
+
+        var isCorrect = GameDictionary.ContainsWord(submittedWord)
+            && GameDictionary.ContainsSyllable(submittedWord, currentSyllable);
+
+        if (isCorrect)
+        {
+            correctAnswers++;
+            statusMessage = $"Correct: '{submittedWord}' contains '{currentSyllable}'.";
+            StartNextRound();
+        }
+        else
+        {
+            wrongGuesses++;
+            statusMessage = $"Wrong: '{submittedWord}' is not a valid match for '{currentSyllable}'. Try again.";
+        }
+    }
+
+    private void StartNextRound()
+    {
+        currentSyllable = GameDictionary.GetRandomSyllable(random, selectedDifficulty);
+        if (string.IsNullOrEmpty(currentSyllable))
+        {
+            StopTimer();
+            gameStarted = false;
+            statusMessage = $"No syllables are available for '{DifficultyLabel(selectedDifficulty)}'.";
+            return;
+        }
+
+        rounds++;
+        secondsLeft = roundDurationSeconds;
+        RestartTimer();
+    }
+
+    private void RestartTimer()
+    {
+        StopTimer();
+        roundTimer = new Timer(_ => _ = InvokeAsync(OnTimerTick), null, 1000, 1000);
+    }
+
+    private void StopTimer()
+    {
+        roundTimer?.Dispose();
+        roundTimer = null;
+    }
+
+    private void OnTimerTick()
+    {
+        if (!gameStarted)
+            return;
+
+        secondsLeft--;
+
+        if (secondsLeft > 0)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        timedOutRounds++;
+        if (timedOutRounds >= lives)
+        {
+            statusMessage = $"Game over. You reached {timedOutRounds} timeout(s). Press Start Game to play again.";
+            StopTimer();
+            gameStarted = false;
+            currentSyllable = string.Empty;
+            StateHasChanged();
+            return;
+        }
+
+        statusMessage = $"Time is up for '{currentSyllable}'.";
+        userWord = string.Empty;
+        StartNextRound();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        StopTimer();
+    }
+
+    private static string DifficultyLabel(SyllableDifficulty difficulty)
+    {
+        return difficulty == SyllableDifficulty.AtLeast500
+            ? "500+ words"
+            : "No more than 500 words";
+    }
+}

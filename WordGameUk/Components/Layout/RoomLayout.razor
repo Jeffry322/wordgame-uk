@@ -1,13 +1,12 @@
 @inherits LayoutComponentBase
 
-<div class="room-layout">
-    <header class="room-header px-4">
-        <a class="room-brand" href="/">WordGame</a>
+<div class="h-screen flex flex-col bg-radial from-stone-700 from-40% to-stone-800 text-white text-2xl" style="font-family: 'Lobster', cursive;"
+     xmlns="http://www.w3.org/1999/html">
+    <header class="flex items-center justify-center h-8 bg-fuchsia-700 shadow-2xl">
+        <a href="/">WordGame</a>
     </header>
 
-    <main>
-        <article class="room-content px-4">
-            @Body
-        </article>
+    <main class="flex-1">
+        @Body
     </main>
 </div>

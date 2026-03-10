@@ -1,12 +1,55 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject RoomTopBarState TopBarState
 
-<div class="h-screen flex flex-col bg-radial from-stone-700 from-40% to-stone-800 text-white text-2xl" style="font-family: 'Lobster', cursive;"
+<div class="h-screen flex flex-col bg-radial from-stone-700 from-40% to-stone-800 text-white text-2xl"
+     style="font-family: 'Lobster', cursive;"
      xmlns="http://www.w3.org/1999/html">
-    <header class="flex items-center justify-center h-8 bg-fuchsia-700 shadow-2xl">
-        <a href="/">WordGame</a>
+    <header class="flex min-h-8 items-center justify-between bg-fuchsia-600 px-4 py-2 shadow-2xs">
+        <div class="leading-tight">
+            <a href="/" class="text-xl">WordGame</a>
+            @if (!string.IsNullOrWhiteSpace(TopBarState.Title))
+            {
+                <p class="text-sm">@TopBarState.Title</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(TopBarState.Subtitle))
+            {
+                <p class="text-xs opacity-85">@TopBarState.Subtitle</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(TopBarState.Meta))
+            {
+                <p class="text-xs opacity-75">@TopBarState.Meta</p>
+            }
+        </div>
+
+        @if (TopBarState.ShowLeaveButton && TopBarState.LeaveAction is not null)
+        {
+            <button class="rounded-xl border border-white/45 px-3 py-1 text-sm hover:bg-white/10"
+                    @onclick="OnLeaveClickedAsync">
+                Leave
+            </button>
+        }
     </header>
 
     <main class="flex-1">
         @Body
     </main>
 </div>
+
+@code {
+
+    protected override void OnInitialized()
+    {
+        TopBarState.Changed += OnTopBarChanged;
+    }
+
+    private Task OnLeaveClickedAsync() => TopBarState.LeaveAction?.Invoke() ?? Task.CompletedTask;
+
+    private void OnTopBarChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        TopBarState.Changed -= OnTopBarChanged;
+    }
+
+}

@@ -1,6 +1,6 @@
-using WordGame.Multiplayer.Contracts;
+using WordGameUk.Multiplayer.Contracts;
 
-namespace WordGame.Multiplayer.Domain;
+namespace WordGameUk.Multiplayer.Domain;
 
 public sealed class MultiplayerGameRoom
 {
@@ -36,6 +36,12 @@ public sealed class MultiplayerGameRoom
             if (_players.Any(x => x.ConnectionId == connectionId))
                 return true;
 
+            if (_players.Any(x => string.Equals(x.Name, playerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                _statusMessage = $"Player '{playerName}' is already in room.";
+                return false;
+            }
+
             if (Status != GameRoomStatus.Waiting)
                 return false;
 
@@ -57,7 +63,16 @@ public sealed class MultiplayerGameRoom
             _players.RemoveAt(index);
 
             if (_players.Count == 0)
+            {
+                Status = GameRoomStatus.Waiting;
+                _currentTurnIndex = -1;
+                _currentFragment = string.Empty;
+                _turnEndsAtUtc = DateTimeOffset.MinValue;
+                _winnerConnectionId = string.Empty;
+                _winnerName = string.Empty;
+                _statusMessage = "Waiting for players.";
                 return true;
+            }
 
             if (_currentTurnIndex >= _players.Count)
                 _currentTurnIndex = 0;
@@ -104,19 +119,19 @@ public sealed class MultiplayerGameRoom
         }
     }
 
-    public bool TrySubmitWord(string connectionId, string word)
+    public WordGuessOutcome TrySubmitWord(string connectionId, string word)
     {
         lock (_sync)
         {
             if (Status != GameRoomStatus.InProgress)
-                return false;
+                return WordGuessOutcome.Rejected;
 
             if (_currentTurnIndex < 0 || _currentTurnIndex >= _players.Count)
-                return false;
+                return WordGuessOutcome.Rejected;
 
             var currentPlayer = _players[_currentTurnIndex];
             if (currentPlayer.ConnectionId != connectionId)
-                return false;
+                return WordGuessOutcome.Rejected;
 
             var isCorrect = _dictionary.ContainsWord(word)
                 && _dictionary.ContainsSyllable(word, _currentFragment);
@@ -124,19 +139,21 @@ public sealed class MultiplayerGameRoom
             if (!isCorrect)
             {
                 _statusMessage = $"Wrong guess by '{currentPlayer.Name}'.";
-                return true;
+                return WordGuessOutcome.Incorrect;
             }
 
             _statusMessage = $"'{currentPlayer.Name}' guessed correctly.";
             MoveToNextTurn(Random.Shared);
-            return true;
+            return WordGuessOutcome.Correct;
         }
     }
 
-    public bool TryApplyTimeout(DateTimeOffset nowUtc)
+    public bool TryApplyTimeout(DateTimeOffset nowUtc, out PlayerLifeLostDto? lifeLost)
     {
         lock (_sync)
         {
+            lifeLost = null;
+
             if (Status != GameRoomStatus.InProgress)
                 return false;
 
@@ -148,6 +165,10 @@ public sealed class MultiplayerGameRoom
 
             var timedOutPlayer = _players[_currentTurnIndex];
             timedOutPlayer.LoseLife();
+            lifeLost = new PlayerLifeLostDto(
+                timedOutPlayer.ConnectionId,
+                timedOutPlayer.Lives,
+                timedOutPlayer.IsEliminated);
 
             if (timedOutPlayer.IsEliminated)
                 _statusMessage = $"'{timedOutPlayer.Name}' timed out and was eliminated.";

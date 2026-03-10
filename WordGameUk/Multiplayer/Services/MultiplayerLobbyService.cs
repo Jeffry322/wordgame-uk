@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
-using WordGame.Multiplayer.Contracts;
-using WordGame.Multiplayer.Domain;
+using WordGameUk.Multiplayer.Contracts;
+using WordGameUk.Multiplayer.Domain;
 
-namespace WordGame.Multiplayer.Services;
+namespace WordGameUk.Multiplayer.Services;
 
 public sealed class MultiplayerLobbyService : IMultiplayerLobbyService
 {
@@ -64,13 +64,6 @@ public sealed class MultiplayerLobbyService : IMultiplayerLobbyService
         if (!existingRoom.RemovePlayer(connectionId))
             return false;
 
-        if (existingRoom.IsEmpty())
-        {
-            _rooms.TryRemove(roomId, out _);
-            roomDeleted = true;
-            return true;
-        }
-
         room = existingRoom;
         return true;
     }
@@ -88,26 +81,28 @@ public sealed class MultiplayerLobbyService : IMultiplayerLobbyService
         return true;
     }
 
-    public bool TrySubmitWord(string roomId, string connectionId, string word, out MultiplayerGameRoom room)
+    public WordGuessOutcome TrySubmitWord(string roomId, string connectionId, string word, out MultiplayerGameRoom? room)
     {
-        room = null!;
+        room = null;
         if (!_rooms.TryGetValue(roomId, out var existingRoom))
-            return false;
+            return WordGuessOutcome.Rejected;
 
-        if (!existingRoom.TrySubmitWord(connectionId, word))
-            return false;
+        var outcome = existingRoom.TrySubmitWord(connectionId, word);
+        if (outcome == WordGuessOutcome.Rejected)
+            return WordGuessOutcome.Rejected;
 
         room = existingRoom;
-        return true;
+        return outcome;
     }
 
-    public bool TryApplyTimeout(string roomId, DateTimeOffset nowUtc, out MultiplayerGameRoom room)
+    public bool TryApplyTimeout(string roomId, DateTimeOffset nowUtc, out MultiplayerGameRoom room, out PlayerLifeLostDto? lifeLost)
     {
         room = null!;
+        lifeLost = null;
         if (!_rooms.TryGetValue(roomId, out var existingRoom))
             return false;
 
-        if (!existingRoom.TryApplyTimeout(nowUtc))
+        if (!existingRoom.TryApplyTimeout(nowUtc, out lifeLost))
             return false;
 
         room = existingRoom;

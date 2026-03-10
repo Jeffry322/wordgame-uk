@@ -1,8 +1,8 @@
-
-using WordGame;
-using WordGame.Multiplayer;
-using WordGame.Multiplayer.Services;
+using WordGameUk;
 using WordGameUk.Components;
+using WordGameUk.Components.Layout;
+using WordGameUk.Multiplayer;
+using WordGameUk.Multiplayer.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,9 +10,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSingleton<Dictionary>();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(12);
+    options.KeepAliveInterval = TimeSpan.FromSeconds(4);
+});
 builder.Services.AddSingleton<IMultiplayerLobbyService, MultiplayerLobbyService>();
 builder.Services.AddHostedService<MultiplayerRoomTickerService>();
+builder.Services.AddScoped<RoomTopBarState>();
+builder.Services.AddScoped<PlayerSessionStorage>();
 
 var app = builder.Build();
 

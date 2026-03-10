@@ -1,4 +1,4 @@
-namespace WordGame;
+namespace WordGameUk;
 
 public enum SyllableDifficulty
 {

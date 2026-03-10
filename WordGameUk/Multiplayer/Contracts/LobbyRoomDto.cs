@@ -1,4 +1,4 @@
-namespace WordGame.Multiplayer.Contracts;
+namespace WordGameUk.Multiplayer.Contracts;
 
 public sealed record LobbyRoomDto(
     string RoomId,

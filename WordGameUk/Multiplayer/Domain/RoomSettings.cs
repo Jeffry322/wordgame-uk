@@ -1,4 +1,4 @@
-namespace WordGame.Multiplayer.Domain;
+namespace WordGameUk.Multiplayer.Domain;
 
 public sealed record RoomSettings(
     SyllableDifficulty Difficulty,

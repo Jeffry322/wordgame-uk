@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.SignalR;
-using WordGame.Multiplayer.Domain;
-using WordGame.Multiplayer.Services;
+using WordGameUk.Multiplayer.Contracts;
+using WordGameUk.Multiplayer.Domain;
+using WordGameUk.Multiplayer.Services;
 
-namespace WordGame.Multiplayer;
+namespace WordGameUk.Multiplayer;
 
 public sealed class MultiplayerHub : Hub
 {
@@ -81,12 +82,17 @@ public sealed class MultiplayerHub : Hub
         await BroadcastRoomChange(roomId, false, room);
     }
 
-    public async Task SubmitWord(string roomId, string word)
+    public async Task<WordGuessOutcome> SubmitWord(string roomId, string word)
     {
-        if (!_lobbyService.TrySubmitWord(roomId, Context.ConnectionId, word.Trim(), out var room))
-            return;
+        var outcome = _lobbyService.TrySubmitWord(roomId, Context.ConnectionId, word.Trim(), out var room);
+        if (outcome == WordGuessOutcome.Rejected || room is null)
+            return WordGuessOutcome.Rejected;
+
+        await Clients.Group(GroupName(roomId))
+            .SendAsync("GuessFeedback", new GuessFeedbackDto(Context.ConnectionId, outcome));
 
         await BroadcastRoomChange(roomId, false, room);
+        return outcome;
     }
 
     private async Task BroadcastRoomChange(string roomId, bool roomDeleted, MultiplayerGameRoom? room)

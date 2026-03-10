@@ -5,62 +5,74 @@
 
 <PageTitle>Dictionary Game</PageTitle>
 
-<h1>Dictionary Game</h1>
+<h1 class="mb-6 text-3xl font-bold tracking-tight text-slate-900">Dictionary Game</h1>
 
 @if (!gameStarted)
 {
-    <div class="mb-3">
-        <label for="difficulty-input" class="form-label">Difficulty</label>
-        <select id="difficulty-input" class="form-select" @bind="selectedDifficulty">
+    <div class="mb-4">
+        <label for="difficulty-input" class="mb-2 block text-sm font-medium text-slate-700">Difficulty</label>
+        <select id="difficulty-input"
+                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                @bind="selectedDifficulty">
             <option value="@SyllableDifficulty.AtLeast500">500+ words</option>
             <option value="@SyllableDifficulty.AtMost500">No more than 500 words</option>
         </select>
     </div>
 
-    <div class="mb-3">
-        <label for="time-input" class="form-label">Round Time: @roundDurationSeconds s</label>
+    <div class="mb-4">
+        <label for="time-input" class="mb-2 block text-sm font-medium text-slate-700">Round Time: @roundDurationSeconds s</label>
         <input id="time-input"
-               class="form-range"
+               class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-sky-600"
                type="range"
                min="@MinRoundDurationSeconds"
                max="@MaxRoundDurationSeconds"
                @bind="roundDurationSeconds" />
     </div>
 
-    <div class="mb-3">
-        <label for="lives-input" class="form-label">Lives (max timeouts): @lives</label>
+    <div class="mb-6">
+        <label for="lives-input" class="mb-2 block text-sm font-medium text-slate-700">Lives (max timeouts): @lives</label>
         <input id="lives-input"
-               class="form-range"
+               class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-sky-600"
                type="range"
                min="@MinLives"
                max="@MaxLives"
                @bind="lives" />
     </div>
 
-    <button class="btn btn-primary" @onclick="StartGame">Start Game</button>
+    <button class="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700" @onclick="StartGame">
+        Start Game
+    </button>
 }
 else
 {
-    <p class="lead">Type a valid dictionary word that contains this syllable:</p>
-    <p class="fs-3 fw-bold" role="status">@currentSyllable</p>
-    <p>Time left: <strong>@secondsLeft</strong>s</p>
+    <p class="text-lg text-slate-700">Type a valid dictionary word that contains this syllable:</p>
+    <p class="mb-2 text-3xl font-bold text-slate-900" role="status">@currentSyllable</p>
+    <p class="mb-4 text-slate-700">Time left: <strong>@secondsLeft</strong>s</p>
 
     <form @onsubmit="SubmitWord" @onsubmit:preventDefault>
-        <div class="mb-3">
-            <label for="word-input" class="form-label">Your word</label>
-            <input id="word-input" class="form-control" @bind="userWord" />
+        <div class="mb-4">
+            <label for="word-input" class="mb-2 block text-sm font-medium text-slate-700">Your word</label>
+            <input id="word-input"
+                   class="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                   @bind="userWord" />
         </div>
 
-        <button class="btn btn-primary" type="submit">Submit</button>
-        <button class="btn btn-outline-secondary ms-2" type="button" @onclick="StartGame">Restart Game</button>
+        <div class="flex gap-2">
+            <button class="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700" type="submit">
+                Submit
+            </button>
+            <button class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button" @onclick="StartGame">
+                Restart Game
+            </button>
+        </div>
     </form>
 
-    <p>Rounds: @rounds | Correct: @correctAnswers | Wrong: @wrongGuesses | Timeouts: @timedOutRounds/@lives</p>
+    <p class="mt-4 text-sm text-slate-700">Rounds: @rounds | Correct: @correctAnswers | Wrong: @wrongGuesses | Timeouts: @timedOutRounds/@lives</p>
 }
 
 @if (!string.IsNullOrEmpty(statusMessage))
 {
-    <p role="status">@statusMessage</p>
+    <p class="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">@statusMessage</p>
 }
 
 @code {

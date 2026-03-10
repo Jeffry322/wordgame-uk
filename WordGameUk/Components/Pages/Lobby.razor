@@ -2,8 +2,9 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
-@using WordGame.Multiplayer.Contracts
+@using WordGameUk.Multiplayer.Contracts
 @inject NavigationManager Navigation
+@inject PlayerSessionStorage PlayerSessionStorage
 
 <PageTitle>Multiplayer Lobby</PageTitle>
 
@@ -87,7 +88,7 @@
                 </div>
                 <button
                     class="mt-auto inline-flex w-fit rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 transition hover:bg-sky-50"
-                    @onclick="() => OpenRoom(room.RoomId)">Open
+                    @onclick="() => OpenRoomAsync(room.RoomId)">Open
                 </button>
             </div>
         </div>
@@ -135,11 +136,21 @@
         await connection.StartAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await LoadAndApplyDisplayNameAsync();
+    }
+
     private async Task SaveNameAsync()
     {
         if (connection is null)
             return;
 
+        displayName = PlayerSessionStorage.NormalizeDisplayName(displayName);
+        await PlayerSessionStorage.SetDisplayNameAsync(displayName);
         await connection.SendAsync("SetDisplayName", displayName);
     }
 
@@ -147,6 +158,8 @@
     {
         if (connection is null)
             return;
+
+        await SaveNameAsync();
 
         var roomId = await connection.InvokeAsync<string?>("CreateRoom",
             newRoomName,
@@ -164,7 +177,25 @@
         uiMessage = "Room created.";
     }
 
-    private void OpenRoom(string roomId) => Navigation.NavigateTo($"/lobby/room/{roomId}");
+    private async Task OpenRoomAsync(string roomId)
+    {
+        await SaveNameAsync();
+        Navigation.NavigateTo($"/lobby/room/{roomId}");
+    }
+
+    private async Task LoadAndApplyDisplayNameAsync()
+    {
+        if (connection is null)
+            return;
+
+        var storedName = await PlayerSessionStorage.GetDisplayNameAsync();
+        if (string.IsNullOrWhiteSpace(storedName))
+            return;
+
+        displayName = PlayerSessionStorage.NormalizeDisplayName(storedName);
+        await connection.SendAsync("SetDisplayName", displayName);
+        await InvokeAsync(StateHasChanged);
+    }
 
     private static string RoomStatus(LobbyRoomDto room)
     {

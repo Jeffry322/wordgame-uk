@@ -1,7 +1,7 @@
-using WordGame.Multiplayer.Contracts;
-using WordGame.Multiplayer.Domain;
+using WordGameUk.Multiplayer.Contracts;
+using WordGameUk.Multiplayer.Domain;
 
-namespace WordGame.Multiplayer.Services;
+namespace WordGameUk.Multiplayer.Services;
 
 public interface IMultiplayerLobbyService
 {
@@ -11,8 +11,8 @@ public interface IMultiplayerLobbyService
     bool TryJoinRoom(string roomId, string connectionId, out MultiplayerGameRoom room);
     bool TryLeaveRoom(string roomId, string connectionId, out bool roomDeleted, out MultiplayerGameRoom? room);
     bool TryStartRoom(string roomId, out MultiplayerGameRoom room);
-    bool TrySubmitWord(string roomId, string connectionId, string word, out MultiplayerGameRoom room);
-    bool TryApplyTimeout(string roomId, DateTimeOffset nowUtc, out MultiplayerGameRoom room);
+    WordGuessOutcome TrySubmitWord(string roomId, string connectionId, string word, out MultiplayerGameRoom? room);
+    bool TryApplyTimeout(string roomId, DateTimeOffset nowUtc, out MultiplayerGameRoom room, out PlayerLifeLostDto? lifeLost);
     IReadOnlyCollection<MultiplayerGameRoom> GetRooms();
     IReadOnlyCollection<LobbyRoomDto> GetLobbySnapshot();
 }

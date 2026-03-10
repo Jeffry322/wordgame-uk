@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
-using WordGame.Multiplayer.Services;
+using WordGameUk.Multiplayer.Services;
 
-namespace WordGame.Multiplayer;
+namespace WordGameUk.Multiplayer;
 
 public sealed class MultiplayerRoomTickerService : BackgroundService
 {
@@ -25,10 +25,16 @@ public sealed class MultiplayerRoomTickerService : BackgroundService
 
             foreach (var room in _lobbyService.GetRooms())
             {
-                if (!_lobbyService.TryApplyTimeout(room.Id, now, out var updatedRoom))
+                if (!_lobbyService.TryApplyTimeout(room.Id, now, out var updatedRoom, out var lifeLost))
                     continue;
 
                 roomChanged = true;
+                if (lifeLost is not null)
+                {
+                    await _hubContext.Clients.Group(GroupName(room.Id))
+                        .SendAsync("PlayerLifeLost", lifeLost, stoppingToken);
+                }
+
                 var snapshot = updatedRoom.ToSnapshot(now);
                 await _hubContext.Clients.Group(GroupName(room.Id)).SendAsync("RoomUpdated", snapshot, stoppingToken);
             }

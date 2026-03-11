@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="WordGameUk.Application/WordGameUk.Application.csproj" />
+  <Project Path="WordGameUk.Multiplayer.Core/WordGameUk.Multiplayer.Core.csproj" />
   <Project Path="WordGameUk/WordGameUk.csproj" />
 </Solution>

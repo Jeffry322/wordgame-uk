@@ -4,10 +4,11 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
-@using WordGameUk.Multiplayer.Contracts
+@using WordGameUk.Multiplayer.Core.Multiplayer.Contracts
 @inject NavigationManager Navigation
 @inject PlayerSessionStorage PlayerSessionStorage
 @inject RoomTopBarState TopBarState
+@inject IJSRuntime Js
 
 <PageTitle>Room</PageTitle>
 
@@ -22,8 +23,8 @@
             <div class="flex flex-col items-center justify-center gap-3 py-2">
                 @foreach (var player in GetLeftPlayers(room.Players))
                 {
-                    <div @key="player.ConnectionId" class="@PlayerCardClass(player)">
-                        @if (TryGetPlayerEffect(player.ConnectionId, out var effect) && ShouldShowEffectBadge(effect))
+                    <div @key="player.PlayerId" class="@PlayerCardClass(player)">
+                        @if (TryGetPlayerEffect(player.PlayerId, out var effect) && ShouldShowEffectBadge(effect))
                         {
                             <div class="@PlayerEffectBadgeClass(effect)">@PlayerEffectIcon(effect)</div>
                         }
@@ -34,25 +35,68 @@
                             </div>
                             <p class="text-lg leading-none">
                                 @player.Name
-                                @if (player.ConnectionId == currentConnectionId)
+                                @if (player.PlayerId == currentPlayerId)
                                 {
                                     <span class="text-xs opacity-75">(you)</span>
                                 }
                             </p>
+                            @if (IsDisconnectedInGame(player))
+                            {
+                                <p class="text-xs font-medium uppercase tracking-wide text-amber-200">Reconnecting...</p>
+                            }
                             <p class="text-sm leading-none">@LivesHearts(player)</p>
+                            @if (ShouldShowPlayerTyping(player))
+                            {
+                                <p class="max-w-32 truncate font-mono text-base leading-none text-emerald-100">
+                                    @TypingTextForPlayer(player)
+                                </p>
+                            }
                         </div>
                     </div>
                 }
             </div>
             <div class="flex items-center justify-center">
-                @if (!room.IsInProgress && !room.IsFinished)
+                @if (!room.IsInProgress)
                 {
-                    <button
-                        class="rounded-2xl bg-emerald-600 px-6 py-3 text-lg disabled:cursor-not-allowed disabled:opacity-40"
-                        disabled="@(!CanStart())"
-                        @onclick="StartGameAsync">
-                        Start Game
-                    </button>
+                    <div class="flex w-72 flex-col items-center gap-3 text-center">
+                        <p class="text-sm opacity-80">Queued players: @QueuedPlayersCount() / @room.Players.Count</p>
+                        <button
+                            class="w-full rounded-2xl border border-sky-500 px-6 py-3 text-lg disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled="@string.IsNullOrWhiteSpace(currentPlayerId)"
+                            @onclick="ToggleQueueStateAsync">
+                            @(IsCurrentPlayerQueued() ? "Leave game queue" : "Join game")
+                        </button>
+                        <button
+                            class="w-full rounded-2xl bg-emerald-600 px-6 py-3 text-lg disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled="@(!CanStart())"
+                            @onclick="StartGameAsync">
+                            Start Game
+                        </button>
+
+                        <div class="mt-2 w-full rounded-xl border border-white/15 bg-black/15 p-3 text-left">
+                            <p class="mb-1 text-xs uppercase tracking-wide opacity-75">Waiting List</p>
+                            @{
+                                var waitingPlayers = GetWaitingPlayers(room.Players);
+                            }
+                            @if (waitingPlayers.Count == 0)
+                            {
+                                <p class="text-sm opacity-70">Nobody is waiting.</p>
+                            }
+                            else
+                            {
+                                @foreach (var waitingPlayer in waitingPlayers)
+                                {
+                                    <p class="text-sm leading-6">
+                                        @waitingPlayer.Name
+                                        @if (waitingPlayer.PlayerId == currentPlayerId)
+                                        {
+                                            <span class="text-xs opacity-75">(you)</span>
+                                        }
+                                    </p>
+                                }
+                            }
+                        </div>
+                    </div>
                 }
                 else if (room.IsInProgress)
                 {
@@ -64,19 +108,12 @@
                         <p class="text-lg">Time Left: @room.SecondsLeft s</p>
                     </div>
                 }
-                else
-                {
-                    <div class="text-center">
-                        <p class="text-sm uppercase tracking-wide">Winner</p>
-                        <p class="text-2xl">@room.WinnerName</p>
-                    </div>
-                }
             </div>
             <div class="flex flex-col items-center justify-center gap-3 py-2">
                 @foreach (var player in GetRightPlayers(room.Players))
                 {
-                    <div @key="player.ConnectionId" class="@PlayerCardClass(player)">
-                        @if (TryGetPlayerEffect(player.ConnectionId, out var effect) && ShouldShowEffectBadge(effect))
+                    <div @key="player.PlayerId" class="@PlayerCardClass(player)">
+                        @if (TryGetPlayerEffect(player.PlayerId, out var effect) && ShouldShowEffectBadge(effect))
                         {
                             <div class="@PlayerEffectBadgeClass(effect)">@PlayerEffectIcon(effect)</div>
                         }
@@ -87,12 +124,22 @@
                             </div>
                             <p class="text-lg leading-none">
                                 @player.Name
-                                @if (player.ConnectionId == currentConnectionId)
+                                @if (player.PlayerId == currentPlayerId)
                                 {
                                     <span class="text-xs opacity-75">(you)</span>
                                 }
                             </p>
+                            @if (IsDisconnectedInGame(player))
+                            {
+                                <p class="text-xs font-medium uppercase tracking-wide text-amber-200">Reconnecting...</p>
+                            }
                             <p class="text-sm leading-none">@LivesHearts(player)</p>
+                            @if (ShouldShowPlayerTyping(player))
+                            {
+                                <p class="max-w-32 truncate font-mono text-base leading-none text-emerald-100">
+                                    @TypingTextForPlayer(player)
+                                </p>
+                            }
                         </div>
                     </div>
                 }
@@ -106,7 +153,8 @@
                 <input class="flex-1 rounded-3xl border px-4 py-3 text-lg"
                        placeholder="Your word"
                        @ref="guessInputRef"
-                       @bind="guessWord"
+                       value="@guessWord"
+                       @oninput="OnGuessInputChanged"
                        disabled="@(!CanGuess())"/>
                 <button
                     class="rounded-3xl bg-green-600 px-5 py-3 text-lg disabled:cursor-not-allowed disabled:opacity-40"
@@ -117,7 +165,9 @@
             }
             else
             {
-                <div class="flex-1 text-center text-lg opacity-70">Waiting for your turn...</div>
+                <div class="flex-1 text-center text-lg opacity-70">
+                    @(room?.IsInProgress == true ? "Waiting for your turn..." : "Join game queue to play.")
+                </div>
             }
         </form>
     }
@@ -180,7 +230,7 @@
     public string RoomId { get; set; } = string.Empty;
 
     private HubConnection? connection;
-    private string currentConnectionId = string.Empty;
+    private string currentPlayerId = string.Empty;
     private string guessWord = string.Empty;
     private string uiMessage = string.Empty;
     private RoomSnapshotDto? room;
@@ -188,9 +238,13 @@
     private bool wasMyTurn;
     private bool shouldFocusInput;
     private bool displayNameLoaded;
-    private bool joinAttempted;
+    private bool joinInProgress;
+    private string typingPlayerId = string.Empty;
+    private string typingText = string.Empty;
+    private string lastTypingSent = string.Empty;
     private readonly Dictionary<string, PlayerEffect> playerEffects = new();
     private readonly Dictionary<string, int> playerEffectVersions = new();
+    private readonly Dictionary<string, DateTimeOffset> disconnectedSinceUtc = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -205,18 +259,22 @@
             .WithAutomaticReconnect()
             .Build();
 
-        connection.On<string>("Connected",
-            id =>
-            {
-                currentConnectionId = id;
-                if (CanGuess() && !wasMyTurn)
-                {
-                    shouldFocusInput = true;
-                    wasMyTurn = true;
-                }
+        connection.Reconnecting += _ =>
+        {
+            uiMessage = "Connection lost. Reconnecting...";
+            UpdateTopBarState();
+            return InvokeAsync(StateHasChanged);
+        };
 
-                return InvokeAsync(StateHasChanged);
+        connection.Reconnected += _ =>
+        {
+            return InvokeAsync(async () =>
+            {
+                await EnsurePlayerIdAsync();
+                await ApplyStoredDisplayNameAsync();
+                await JoinRoomAsync();
             });
+        };
 
         connection.On<RoomSnapshotDto>("RoomUpdated",
             snapshot =>
@@ -227,14 +285,46 @@
                 }
 
                 room = snapshot;
-                var isMyTurn = snapshot.IsInProgress && snapshot.CurrentTurnConnectionId == currentConnectionId;
+                TrackDisconnectedPlayers(snapshot);
+                var isMyTurn = snapshot.IsInProgress && snapshot.CurrentTurnPlayerId == currentPlayerId;
                 if (isMyTurn && !wasMyTurn)
                 {
                     shouldFocusInput = true;
                 }
 
+                if (!snapshot.IsInProgress
+                    || string.IsNullOrWhiteSpace(snapshot.CurrentTurnPlayerId)
+                    || snapshot.CurrentTurnPlayerId != typingPlayerId
+                    || IsCurrentTurnDisconnected(snapshot))
+                {
+                    ClearTypingIndicator();
+                }
+
+                if (!isMyTurn)
+                    lastTypingSent = string.Empty;
+
                 wasMyTurn = isMyTurn;
                 UpdateTopBarState();
+                return InvokeAsync(StateHasChanged);
+            });
+
+        connection.On<TypingUpdateDto>("TypingUpdated",
+            update =>
+            {
+                if (room is null || !room.IsInProgress || room.CurrentTurnPlayerId != update.PlayerId)
+                {
+                    ClearTypingIndicator();
+                    return InvokeAsync(StateHasChanged);
+                }
+
+                if (string.IsNullOrWhiteSpace(update.Text))
+                {
+                    ClearTypingIndicator();
+                    return InvokeAsync(StateHasChanged);
+                }
+
+                typingPlayerId = update.PlayerId;
+                typingText = update.Text;
                 return InvokeAsync(StateHasChanged);
             });
 
@@ -243,11 +333,11 @@
             {
                 if (feedback.Outcome == WordGuessOutcome.Correct)
                 {
-                    TriggerPlayerEffect(feedback.PlayerConnectionId, PlayerEffect.Success);
+                    TriggerPlayerEffect(feedback.PlayerId, PlayerEffect.Success);
                 }
                 else if (feedback.Outcome == WordGuessOutcome.Incorrect)
                 {
-                    TriggerPlayerEffect(feedback.PlayerConnectionId, PlayerEffect.Shake);
+                    TriggerPlayerEffect(feedback.PlayerId, PlayerEffect.Shake);
                 }
 
                 return InvokeAsync(StateHasChanged);
@@ -256,22 +346,23 @@
         connection.On<PlayerLifeLostDto>("PlayerLifeLost",
             lifeLost =>
             {
-                TriggerPlayerEffect(lifeLost.PlayerConnectionId, PlayerEffect.Damage);
+                TriggerPlayerEffect(lifeLost.PlayerId, PlayerEffect.Damage);
                 return InvokeAsync(StateHasChanged);
             });
 
         connection.On<string>("RoomClosed",
-            roomId =>
+            async roomId =>
             {
                 if (roomId == RoomId)
                 {
                     uiMessage = "Room was closed.";
                     room = null;
                     UpdateTopBarState();
+                    await ClearRoomPresenceAsync();
                     Navigation.NavigateTo("/lobby");
                 }
 
-                return InvokeAsync(StateHasChanged);
+                await InvokeAsync(StateHasChanged);
             });
 
         await connection.StartAsync();
@@ -282,6 +373,8 @@
         if (firstRender && !displayNameLoaded)
         {
             displayNameLoaded = true;
+            await EnsurePlayerIdAsync();
+            await SetRoomPresenceAsync();
             await ApplyStoredDisplayNameAsync();
             await JoinRoomAsync();
         }
@@ -301,18 +394,63 @@
         await connection.SendAsync("StartGame", RoomId);
     }
 
-    private async Task SubmitGuessAsync()
+    private async Task ToggleQueueStateAsync()
     {
-        if (connection is null || string.IsNullOrWhiteSpace(guessWord))
+        if (connection is null || string.IsNullOrWhiteSpace(currentPlayerId) || room is null || room.IsInProgress)
             return;
 
-        var outcome = await connection.InvokeAsync<WordGuessOutcome>("SubmitWord", RoomId, guessWord);
+        await connection.SendAsync("SetPlayerInGame", RoomId, currentPlayerId, !IsCurrentPlayerQueued());
+    }
+
+    private async Task SubmitGuessAsync()
+    {
+        if (connection is null || string.IsNullOrWhiteSpace(guessWord) || string.IsNullOrWhiteSpace(currentPlayerId))
+            return;
+
+        await SendTypingUpdateAsync(string.Empty);
+        var outcome = await connection.InvokeAsync<WordGuessOutcome>("SubmitWord", RoomId, currentPlayerId, guessWord);
         if (outcome == WordGuessOutcome.Rejected)
         {
             uiMessage = "Guess was rejected.";
         }
 
         guessWord = string.Empty;
+        lastTypingSent = string.Empty;
+        ClearTypingIndicator();
+    }
+
+    private async Task OnGuessInputChanged(ChangeEventArgs args)
+    {
+        guessWord = args.Value?.ToString() ?? string.Empty;
+
+        if (!CanGuess())
+            return;
+
+        await SendTypingUpdateAsync(guessWord);
+    }
+
+    private async Task SendTypingUpdateAsync(string text)
+    {
+        if (connection is null || string.IsNullOrWhiteSpace(currentPlayerId) || room is null || !room.IsInProgress)
+            return;
+
+        var normalized = text.Trim();
+        if (normalized.Length > 32)
+            normalized = normalized[..32];
+
+        if (string.IsNullOrWhiteSpace(normalized))
+            ClearTypingIndicator();
+        else
+        {
+            typingPlayerId = currentPlayerId;
+            typingText = normalized;
+        }
+
+        if (lastTypingSent == normalized)
+            return;
+
+        lastTypingSent = normalized;
+        await connection.SendAsync("UpdateTyping", RoomId, currentPlayerId, normalized);
     }
 
     private async Task LeaveRoomAsync()
@@ -320,46 +458,82 @@
         if (connection is not null)
             await connection.SendAsync("LeaveRoom", RoomId);
 
+        await ClearRoomPresenceAsync();
         TopBarState.Clear();
         Navigation.NavigateTo("/lobby");
     }
 
     private async Task JoinRoomAsync()
     {
-        if (connection is null || joinAttempted)
+        if (connection is null || string.IsNullOrWhiteSpace(currentPlayerId) || joinInProgress)
             return;
 
-        joinAttempted = true;
-        const int maxAttempts = 12;
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        joinInProgress = true;
+        try
         {
-            var joined = await connection.InvokeAsync<bool>("JoinRoom", RoomId);
-            if (joined)
+            const int maxAttempts = 16;
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                uiMessage = string.Empty;
-                return;
-            }
+                if (connection.State != HubConnectionState.Connected)
+                    return;
 
-            if (attempt < maxAttempts)
-            {
-                uiMessage = "Reconnecting to room...";
+                JoinRoomResult joinResult;
+                try
+                {
+                    joinResult = await connection.InvokeAsync<JoinRoomResult>("JoinRoom", RoomId, currentPlayerId);
+                }
+                catch (InvalidOperationException) when (connection.State != HubConnectionState.Connected)
+                {
+                    return;
+                }
+
+                if (joinResult is JoinRoomResult.Joined or JoinRoomResult.Reconnected)
+                {
+                    uiMessage = string.Empty;
+                    UpdateTopBarState();
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                if (joinResult == JoinRoomResult.AlreadyInRoom && attempt < maxAttempts)
+                {
+                    await Task.Delay(1000);
+                    continue;
+                }
+
+                uiMessage = joinResult switch
+                {
+                    JoinRoomResult.AlreadyInRoom => "You are already connected to this room from another tab/window.",
+                    JoinRoomResult.NotFound => "Room was not found.",
+                    JoinRoomResult.Unavailable => "Unable to join room.",
+                    _ => "Unable to join room."
+                };
+
                 UpdateTopBarState();
                 await InvokeAsync(StateHasChanged);
-                await Task.Delay(1000);
+                await ClearRoomPresenceAsync();
+                Navigation.NavigateTo("/lobby");
+                return;
             }
         }
-
-        if (room is null)
+        finally
         {
-            uiMessage = "Unable to join room. You may already be in this room from another tab.";
-            UpdateTopBarState();
-            Navigation.NavigateTo("/lobby");
+            joinInProgress = false;
         }
+
+        if (connection.State != HubConnectionState.Connected)
+            return;
+
+        uiMessage = "Unable to rejoin room. Please try opening the room again.";
+        UpdateTopBarState();
+        await InvokeAsync(StateHasChanged);
+        await ClearRoomPresenceAsync();
+        Navigation.NavigateTo("/lobby");
     }
 
     private async Task ApplyStoredDisplayNameAsync()
     {
-        if (connection is null)
+        if (connection is null || string.IsNullOrWhiteSpace(currentPlayerId))
             return;
 
         var storedName = await PlayerSessionStorage.GetDisplayNameAsync();
@@ -367,7 +541,32 @@
             return;
 
         var normalizedName = PlayerSessionStorage.NormalizeDisplayName(storedName);
-        await connection.SendAsync("SetDisplayName", normalizedName);
+        await connection.SendAsync("SetDisplayName", currentPlayerId, normalizedName);
+    }
+
+    private async Task EnsurePlayerIdAsync()
+    {
+        currentPlayerId = await PlayerSessionStorage.GetOrCreatePlayerIdAsync();
+    }
+
+    private async Task SetRoomPresenceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentPlayerId))
+            return;
+
+        await Js.InvokeVoidAsync("wordGameRoomPresence.set", RoomId, currentPlayerId);
+    }
+
+    private async Task ClearRoomPresenceAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("wordGameRoomPresence.clear");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Browser already disconnected; nothing to clear.
+        }
     }
 
     private bool CanStart()
@@ -375,7 +574,23 @@
         if (room is null)
             return false;
 
-        return !room.IsInProgress && !room.IsFinished && room.Players.Count >= 2;
+        return !room.IsInProgress && QueuedPlayersCount() >= 2;
+    }
+
+    private int QueuedPlayersCount()
+    {
+        if (room is null)
+            return 0;
+
+        return room.Players.Count(x => x.IsInGame);
+    }
+
+    private bool IsCurrentPlayerQueued()
+    {
+        if (room is null || string.IsNullOrWhiteSpace(currentPlayerId))
+            return false;
+
+        return room.Players.Any(x => x.PlayerId == currentPlayerId && x.IsInGame);
     }
 
     private bool CanGuess()
@@ -383,7 +598,7 @@
         if (room is null || !room.IsInProgress)
             return false;
 
-        return room.CurrentTurnConnectionId == currentConnectionId;
+        return room.CurrentTurnPlayerId == currentPlayerId;
     }
 
     private string CurrentTurnName()
@@ -399,19 +614,65 @@
     {
         var baseClass = "relative h-52 w-36 flex items-center justify-center rounded-2xl px-3 py-4 transition";
         var eliminatedClass = player.IsEliminated ? " opacity-45 grayscale bg-black/25" : " bg-white/10";
-        var effectClass = playerEffects.TryGetValue(player.ConnectionId, out var effect) && effect == PlayerEffect.Shake
+        var disconnectedClass = IsDisconnectedInGame(player) ? " opacity-55 saturate-50 ring-1 ring-amber-200/60" : string.Empty;
+        var effectClass = playerEffects.TryGetValue(player.PlayerId, out var effect) && effect == PlayerEffect.Shake
             ? " player-shake"
             : string.Empty;
 
-        if (room is not null && room.IsInProgress && player.IsCurrentTurn && !player.IsEliminated)
-            return $"{baseClass}{eliminatedClass}{effectClass} ring-2 ring-emerald-300 shadow-[0_0_24px_rgba(110,231,183,0.55)]";
+        if (room is not null && room.IsInProgress && player.IsCurrentTurn && !player.IsEliminated && player.IsConnected)
+            return $"{baseClass}{eliminatedClass}{disconnectedClass}{effectClass} ring-2 ring-emerald-300 shadow-[0_0_24px_rgba(110,231,183,0.55)]";
 
-        return $"{baseClass}{eliminatedClass}{effectClass}";
+        return $"{baseClass}{eliminatedClass}{disconnectedClass}{effectClass}";
     }
 
-    private bool TryGetPlayerEffect(string connectionId, out PlayerEffect effect)
+    private bool IsDisconnectedInGame(RoomPlayerDto player)
     {
-        if (playerEffects.TryGetValue(connectionId, out effect))
+        if (room is null || !room.IsInProgress || player.IsConnected)
+            return false;
+
+        if (!disconnectedSinceUtc.TryGetValue(player.PlayerId, out var disconnectedSince))
+            return false;
+
+        return DateTimeOffset.UtcNow - disconnectedSince >= TimeSpan.FromMilliseconds(800);
+    }
+
+    private static bool IsCurrentTurnDisconnected(RoomSnapshotDto snapshot)
+    {
+        if (string.IsNullOrWhiteSpace(snapshot.CurrentTurnPlayerId))
+            return false;
+
+        var currentPlayer = snapshot.Players.FirstOrDefault(x => x.PlayerId == snapshot.CurrentTurnPlayerId);
+        return currentPlayer is not null && !currentPlayer.IsConnected;
+    }
+
+    private void TrackDisconnectedPlayers(RoomSnapshotDto snapshot)
+    {
+        if (!snapshot.IsInProgress)
+        {
+            disconnectedSinceUtc.Clear();
+            return;
+        }
+
+        var playerIdsInSnapshot = new HashSet<string>(snapshot.Players.Select(x => x.PlayerId));
+        foreach (var trackedId in disconnectedSinceUtc.Keys.Where(x => !playerIdsInSnapshot.Contains(x)).ToList())
+            disconnectedSinceUtc.Remove(trackedId);
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var player in snapshot.Players)
+        {
+            if (player.IsConnected)
+            {
+                disconnectedSinceUtc.Remove(player.PlayerId);
+                continue;
+            }
+
+            disconnectedSinceUtc.TryAdd(player.PlayerId, now);
+        }
+    }
+
+    private bool TryGetPlayerEffect(string playerId, out PlayerEffect effect)
+    {
+        if (playerEffects.TryGetValue(playerId, out effect))
             return true;
 
         effect = PlayerEffect.None;
@@ -467,7 +728,7 @@
 
     private static IReadOnlyList<RoomPlayerDto> GetLeftPlayers(IReadOnlyCollection<RoomPlayerDto> players)
     {
-        var list = players.ToList();
+        var list = players.Where(x => x.IsInGame).ToList();
         var leftCount = (int)Math.Ceiling(list.Count / 2.0);
 
         return list.Take(leftCount).ToList();
@@ -475,32 +736,60 @@
 
     private static IReadOnlyList<RoomPlayerDto> GetRightPlayers(IReadOnlyCollection<RoomPlayerDto> players)
     {
-        var list = players.ToList();
+        var list = players.Where(x => x.IsInGame).ToList();
         var leftCount = (int)Math.Ceiling(list.Count / 2.0);
 
         return list.Skip(leftCount).ToList();
     }
 
-    private void TriggerPlayerEffect(string connectionId, PlayerEffect effect)
+    private static IReadOnlyList<RoomPlayerDto> GetWaitingPlayers(IReadOnlyCollection<RoomPlayerDto> players)
+    {
+        return players.Where(x => !x.IsInGame).ToList();
+    }
+
+    private bool ShouldShowPlayerTyping(RoomPlayerDto player)
+    {
+        return room is not null
+               && room.IsInProgress
+               && !string.IsNullOrWhiteSpace(typingText)
+               && room.CurrentTurnPlayerId == typingPlayerId
+               && player.PlayerId == typingPlayerId;
+    }
+
+    private string TypingTextForPlayer(RoomPlayerDto player)
+    {
+        if (!ShouldShowPlayerTyping(player))
+            return string.Empty;
+
+        return typingText;
+    }
+
+    private void ClearTypingIndicator()
+    {
+        typingPlayerId = string.Empty;
+        typingText = string.Empty;
+    }
+
+    private void TriggerPlayerEffect(string playerId, PlayerEffect effect)
     {
         var version = 1;
-        if (playerEffectVersions.TryGetValue(connectionId, out var currentVersion))
+        if (playerEffectVersions.TryGetValue(playerId, out var currentVersion))
         {
             version = currentVersion + 1;
         }
 
-        playerEffectVersions[connectionId] = version;
-        playerEffects[connectionId] = effect;
-        _ = ClearPlayerEffectAsync(connectionId, version);
+        playerEffectVersions[playerId] = version;
+        playerEffects[playerId] = effect;
+        _ = ClearPlayerEffectAsync(playerId, version);
     }
 
-    private async Task ClearPlayerEffectAsync(string connectionId, int version)
+    private async Task ClearPlayerEffectAsync(string playerId, int version)
     {
         await Task.Delay(700);
-        if (!playerEffectVersions.TryGetValue(connectionId, out var currentVersion) || currentVersion != version)
+        if (!playerEffectVersions.TryGetValue(playerId, out var currentVersion) || currentVersion != version)
             return;
 
-        playerEffects.Remove(connectionId);
+        playerEffects.Remove(playerId);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -517,11 +806,7 @@
             return;
         }
 
-        var status = room.IsFinished
-            ? "Finished"
-            : room.IsInProgress
-                ? "In Progress"
-                : "Waiting";
+        var status = room.IsInProgress ? "In Progress" : "Waiting";
         var subtitle = $"{room.Players.Count} player(s) • {status}";
 
         string meta;
@@ -531,11 +816,7 @@
         }
         else if (!CanStart())
         {
-            meta = "Need at least 2 players to start.";
-        }
-        else if (room.IsFinished && !string.IsNullOrWhiteSpace(room.WinnerName))
-        {
-            meta = $"Winner: {room.WinnerName}";
+            meta = "Need at least 2 queued players to start.";
         }
         else
         {
@@ -552,6 +833,7 @@
     public async ValueTask DisposeAsync()
     {
         TopBarState.Clear();
+        await ClearRoomPresenceAsync();
 
         if (connection is null)
             return;

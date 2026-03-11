@@ -1,7 +1,9 @@
 @page "/solo"
 @rendermode InteractiveServer
+@using WordGameUk.Application.Dictionary
+@using WordGameUk.Multiplayer.Core
 @implements IDisposable
-@inject Dictionary GameDictionary
+@inject IWordDictionaryService GameDictionary
 
 <PageTitle>Dictionary Game</PageTitle>
 

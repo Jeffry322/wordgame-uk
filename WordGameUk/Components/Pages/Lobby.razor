@@ -2,7 +2,8 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
-@using WordGameUk.Multiplayer.Contracts
+@using WordGameUk.Multiplayer.Core
+@using WordGameUk.Multiplayer.Core.Multiplayer.Contracts
 @inject NavigationManager Navigation
 @inject PlayerSessionStorage PlayerSessionStorage
 
@@ -103,6 +104,7 @@
 
 @code {
     private HubConnection? connection;
+    private string playerId = string.Empty;
     private string displayName = "Player";
     private string newRoomName = "Room";
     private int newRoomSeconds = 10;
@@ -141,7 +143,7 @@
         if (!firstRender)
             return;
 
-        await LoadAndApplyDisplayNameAsync();
+        await LoadAndApplyPlayerIdentityAsync();
     }
 
     private async Task SaveNameAsync()
@@ -149,9 +151,12 @@
         if (connection is null)
             return;
 
+        if (string.IsNullOrWhiteSpace(playerId))
+            playerId = await PlayerSessionStorage.GetOrCreatePlayerIdAsync();
+
         displayName = PlayerSessionStorage.NormalizeDisplayName(displayName);
         await PlayerSessionStorage.SetDisplayNameAsync(displayName);
-        await connection.SendAsync("SetDisplayName", displayName);
+        await connection.SendAsync("SetDisplayName", playerId, displayName);
     }
 
     private async Task CreateRoomAsync()
@@ -183,24 +188,24 @@
         Navigation.NavigateTo($"/lobby/room/{roomId}");
     }
 
-    private async Task LoadAndApplyDisplayNameAsync()
+    private async Task LoadAndApplyPlayerIdentityAsync()
     {
         if (connection is null)
             return;
+
+        playerId = await PlayerSessionStorage.GetOrCreatePlayerIdAsync();
 
         var storedName = await PlayerSessionStorage.GetDisplayNameAsync();
         if (string.IsNullOrWhiteSpace(storedName))
             return;
 
         displayName = PlayerSessionStorage.NormalizeDisplayName(storedName);
-        await connection.SendAsync("SetDisplayName", displayName);
+        await connection.SendAsync("SetDisplayName", playerId, displayName);
         await InvokeAsync(StateHasChanged);
     }
 
     private static string RoomStatus(LobbyRoomDto room)
     {
-        if (room.IsFinished)
-            return "Finished";
         if (room.IsInProgress)
             return "In Progress";
         return "Waiting";

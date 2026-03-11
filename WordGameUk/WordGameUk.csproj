@@ -5,10 +5,17 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+        <DisableTransitiveProjectReferences>true</DisableTransitiveProjectReferences>
+        <BuildInParallel>false</BuildInParallel>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\WordGameUk.Application\WordGameUk.Application.csproj" />
+      <ProjectReference Include="..\WordGameUk.Multiplayer.Core\WordGameUk.Multiplayer.Core.csproj" />
     </ItemGroup>
 
     <ItemGroup>
